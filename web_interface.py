@@ -540,6 +540,27 @@ class WebTradingAnalyzer:
                 _ = llm.invoke([("user", "Hello")])
                 
                 provider_name = "Qwen"
+            else:  # volcengine
+                from openai import OpenAI
+                api_key = os.environ.get("VOLCENGINE_API_KEY") or self.config.get("volc_api_key", "")
+                if not api_key:
+                    return {
+                        "valid": False,
+                        "error": "❌ Invalid API Key: The Volcengine API key is not set. Please update it in the Settings section.",
+                    }
+
+                client = OpenAI(
+                    api_key=api_key,
+                    base_url=os.environ.get("VOLCENGINE_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
+                )
+                
+                _ = client.chat.completions.create(
+                    model=self.config.get("agent_llm_model", "ep-xxxxxxxx"),
+                    messages=[{"role": "user", "content": "Hello"}],
+                    max_tokens=5,
+                )
+                
+                provider_name = "Volcengine"
             return {"valid": True, "message": f"{provider_name} API key is valid"}
 
         except Exception as e:
@@ -552,8 +573,10 @@ class WebTradingAnalyzer:
                 provider_name = "OpenAI"
             elif provider == "anthropic":
                 provider_name = "Anthropic"
-            else:
+            elif provider == "qwen":
                 provider_name = "Qwen"
+            else:
+                provider_name = "Volcengine"
 
             if (
                 "authentication" in error_msg.lower()
@@ -870,8 +893,8 @@ def update_provider():
         data = request.get_json()
         provider = data.get("provider", "openai")
 
-        if provider not in ["openai", "anthropic", "qwen"]:
-            return jsonify({"error": "Provider must be 'openai', 'anthropic', or 'qwen'"})
+        if provider not in ["openai", "anthropic", "qwen", "volcengine"]:
+            return jsonify({"error": "Provider must be 'openai', 'anthropic', 'qwen', or 'volcengine'"})
 
         print(f"Updating provider to: {provider}")
 
@@ -894,12 +917,18 @@ def update_provider():
                 analyzer.config["agent_llm_model"] = "qwen3-max"
             if not analyzer.config["graph_llm_model"].startswith("qwen"):
                 analyzer.config["graph_llm_model"] = "qwen3-vl-plus"
+        elif provider == "volcengine":
+            # Set default Volcengine (Ark/Doubao) endpoint-style model placeholders
+            if not analyzer.config["agent_llm_model"].startswith("ep-"):
+                analyzer.config["agent_llm_model"] = "ep-xxxxxxxx"
+            if not analyzer.config["graph_llm_model"].startswith("ep-"):
+                analyzer.config["graph_llm_model"] = "ep-xxxxxxxx"
             
         else:
             # Set default OpenAI models if not already set to OpenAI models
-            if analyzer.config["agent_llm_model"].startswith(("claude", "qwen")):
+            if analyzer.config["agent_llm_model"].startswith(("claude", "qwen", "ep-")):
                 analyzer.config["agent_llm_model"] = "gpt-4o-mini"
-            if analyzer.config["graph_llm_model"].startswith(("claude", "qwen")):
+            if analyzer.config["graph_llm_model"].startswith(("claude", "qwen", "ep-")):
                 analyzer.config["graph_llm_model"] = "gpt-4o"
         
         analyzer.trading_graph.config.update(analyzer.config)
@@ -928,8 +957,8 @@ def update_api_key():
         if not new_api_key:
             return jsonify({"error": "API key is required"})
 
-        if provider not in ["openai", "anthropic", "qwen"]:
-            return jsonify({"error": "Provider must be 'openai', 'anthropic', or 'qwen'"})
+        if provider not in ["openai", "anthropic", "qwen", "volcengine"]:
+            return jsonify({"error": "Provider must be 'openai', 'anthropic', 'qwen', or 'volcengine'"})
 
         print(f"Updating {provider} API key to: {new_api_key[:8]}...{new_api_key[-4:]}")
 
@@ -940,6 +969,8 @@ def update_api_key():
             os.environ["ANTHROPIC_API_KEY"] = new_api_key
         elif provider == "qwen":
             os.environ["DASHSCOPE_API_KEY"] = new_api_key
+        elif provider == "volcengine":
+            os.environ["VOLCENGINE_API_KEY"] = new_api_key
 
         # Update the API key in the trading graph
         analyzer.trading_graph.update_api_key(new_api_key, provider=provider)
@@ -974,6 +1005,10 @@ def get_api_key_status():
             # Fallback to config if not in environment
             if not api_key and hasattr(analyzer, 'config'):
                 api_key = analyzer.config.get("qwen_api_key", "")
+        elif provider == "volcengine":
+            api_key = os.environ.get("VOLCENGINE_API_KEY", "")
+            if not api_key and hasattr(analyzer, 'config'):
+                api_key = analyzer.config.get("volc_api_key", "")
         else:
             api_key = ""
         
