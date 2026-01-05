@@ -16,6 +16,10 @@ from default_config import DEFAULT_CONFIG
 from graph_setup import SetGraph
 from graph_util import TechnicalTools
 
+VOLCENGINE_BASE_URL = os.environ.get(
+    "VOLCENGINE_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"
+)
+
 
 class TradingGraph:
     """
@@ -83,7 +87,7 @@ class TradingGraph:
                     "2. Update the config with: config['api_key'] = 'your-key-here'\n"
                     "3. Use the web interface to update the API key"
                 )
-            
+        
             if api_key == "your-openai-api-key-here" or api_key == "":
                 raise ValueError(
                     "Please replace the placeholder API key with your actual OpenAI API key. "
@@ -131,8 +135,27 @@ class TradingGraph:
                     "Please provide your actual Qwen API key. "
                     "You can get one from: https://dashscope.console.aliyun.com/"
                 )
+        elif provider == "volcengine":
+            api_key = self.config.get("volc_api_key")
+
+            if not api_key:
+                api_key = os.environ.get("VOLCENGINE_API_KEY")
+
+            if not api_key:
+                raise ValueError(
+                    "Volcengine API key not found. Please set it using one of these methods:\n"
+                    "1. Set environment variable: export VOLCENGINE_API_KEY='your-key-here'\n"
+                    "2. Update the config with: config['volc_api_key'] = 'your-key-here'\n"
+                    "3. Use the web interface to update the API key"
+                )
+
+            if api_key == "":
+                raise ValueError(
+                    "Please provide your actual Volcengine API key. "
+                    "You can get one from: https://www.volcengine.com/product/ark"
+                )
         else:
-            raise ValueError(f"Unsupported provider: {provider}. Must be 'openai', 'anthropic', or 'qwen'")
+            raise ValueError(f"Unsupported provider: {provider}. Must be 'openai', 'anthropic', 'qwen', or 'volcengine'")
         
         return api_key
 
@@ -174,8 +197,16 @@ class TradingGraph:
                 api_key=api_key,
                 max_retries=4,
             )
+        elif provider == "volcengine":
+            # Volcengine Ark/Doubao provides an OpenAI-compatible endpoint
+            return ChatOpenAI(
+                model=model,
+                temperature=temperature,
+                api_key=api_key,
+                base_url=VOLCENGINE_BASE_URL,
+            )
         else:
-            raise ValueError(f"Unsupported provider: {provider}. Must be 'openai', 'anthropic', or 'qwen'")
+            raise ValueError(f"Unsupported provider: {provider}. Must be 'openai', 'anthropic', 'qwen', or 'volcengine'")
 
     # def _set_tool_nodes(self) -> Dict[str, ToolNode]:
     #     """
@@ -254,8 +285,11 @@ class TradingGraph:
             
             # Also update the environment variable for consistency
             os.environ["DASHSCOPE_API_KEY"] = api_key
+        elif provider == "volcengine":
+            self.config["volc_api_key"] = api_key
+            os.environ["VOLCENGINE_API_KEY"] = api_key
         else:
-            raise ValueError(f"Unsupported provider: {provider}. Must be 'openai', 'anthropic', or 'qwen'")
+            raise ValueError(f"Unsupported provider: {provider}. Must be 'openai', 'anthropic', 'qwen', or 'volcengine'")
         
         # Refresh the LLMs with the new API key
         self.refresh_llms()
